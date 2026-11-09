@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: jeongjeong-jooga
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_PASSWORD
+        sync: false
+      - key: SEC_CONTACT
+        sync: false
+      - key: DART_KEY
+        sync: false

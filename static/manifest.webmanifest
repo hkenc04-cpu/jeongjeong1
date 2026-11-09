@@ -1,0 +1,2 @@
+{"name":"적정주가","short_name":"적정주가","description":"버핏·멍거 방식 적정주가 계산","start_url":"./","scope":"./","display":"standalone","background_color":"#14213d","theme_color":"#14213d","lang":"ko",
+"icons":[{"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},{"src":"icon-maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}
