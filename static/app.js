@@ -453,9 +453,14 @@ function bindCands() {
       const f = $('#cf').files && $('#cf').files[0];
       if (f) { txt = await f.text(); name = f.name; }
       try {
-        const j = JSON.parse(txt);
-        const list = (Array.isArray(j) ? j : []).filter(x => x && x.ticker);
-        if (!list.length) throw new Error('목록이 비어 있거나 형식이 다릅니다.');
+        txt = txt.replace(/^\uFEFF/, '');
+        if (!txt) throw new Error('선택한 파일이 비어 있습니다. 파일을 다시 고르거나 내용을 붙여 넣으세요.');
+        let j; try { j = JSON.parse(txt); } catch (e) { throw new Error('JSON 형식이 아닙니다. PC판이 만든 …_핵심후보.json 파일(엑셀 .xlsx 가 아님)이 맞는지 확인하세요.'); }
+        if (!Array.isArray(j)) j = (j && (j.list || j.cands || j.items)) || null;
+        if (!Array.isArray(j)) throw new Error('후보 목록 형태가 아닙니다. …_핵심후보.json 파일이 맞는지 확인하세요.');
+        if (!j.length) throw new Error('이 파일은 후보가 0개입니다(앱 오류가 아닙니다). 핵심후보는 "자료 8년 이상·시총 $1B 이상·우수/양호·경고 없음·매수 기준 이하"만 담는데, 세계 기타 국가(Yahoo)는 자료가 4~5개년이라 항상 비어 있습니다. 미국·한국(메뉴 1·2·3·5) 결과의 파일을 쓰세요.');
+        const list = j.filter(x => x && x.ticker);
+        if (!list.length) throw new Error('목록에 ticker 항목이 없어 형식이 다릅니다.');
         LS.set('cands', { name, at: today(), list: list.map(x => ({ grp: x.grp, ticker: x.ticker, name: x.name, gap: x.gap, gap_avg: x.gap_avg, score: x.score, tier: x.tier, mult: x.mult, trend_down: x.trend_down, n: x.n })) });
         render();
       } catch (e) { $('#cmsg').innerHTML = `<div class="err">읽지 못했습니다: ${esc(e.message)}</div>`; }
