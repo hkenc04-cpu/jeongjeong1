@@ -552,7 +552,7 @@ def api_settings_set():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True, version='v47-app3', password_set=bool(os.environ.get('APP_PASSWORD')))
+    return jsonify(ok=True, version='v47-app3.3', password_set=bool(os.environ.get('APP_PASSWORD')))
 
 
 @app.get('/')
