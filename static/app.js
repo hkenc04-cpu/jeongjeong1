@@ -252,20 +252,34 @@ function bindReview() {
   if (pend && pend.tab === 'review') { const t = pend.tk; pend = null; $('#tk').value = t; go(); }
   else if (state.review || state.busy) paintOut('review');
 }
-function quote(t, ko) { return `<div class="quote">${esc(t)}${ko ? `<div class="ko">${esc(ko)}</div>` : ''}</div>`; }
+function gtLink(t) { return 'https://translate.google.com/?sl=en&tl=ko&op=translate&text=' + encodeURIComponent(t.slice(0, 1500)); }
+const TRC = new Map();
+function quote(t, ko, en) {
+  if (en && !ko && TRC.has(t)) ko = TRC.get(t);
+  if (en && !ko) return `<div class="quote" data-en="${esc(t)}">${esc(t)}<div class="ko tr"><a href="${esc(gtLink(t))}" target="_blank" rel="noopener">번역 ↗</a></div></div>`;
+  return `<div class="quote">${esc(t)}${ko ? `<div class="ko">${esc(ko)}</div>` : ''}</div>`;
+}
+async function trBrowser(text) {
+  const r = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=' + encodeURIComponent(text.slice(0, 1500)));
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json(); return j[0].map(x => x[0]).filter(Boolean).join('');
+}
 function reviewResult(r) {
   const v = r.rv;
   const real = v.flags.filter(f => f.kind.startsWith('사실형'));
   const hypo = v.flags.filter(f => !f.kind.startsWith('사실형'));
-  const flags = real.length ? real.map(f => `<h4>${esc(f.name)} <span class="tag">${esc(f.kind)}</span></h4>${quote(f.text, f.ko)}`).join('') : '<p class="hint">사실형 주의신호가 잡히지 않았습니다.</p>';
-  const hy = hypo.length ? `<details><summary>가정·일반 언급만 걸린 항목 (${hypo.length})</summary>${hypo.map(f => `<h4>${esc(f.name)}</h4>${quote(f.text, f.ko)}`).join('')}</details>` : '';
-  const moat = v.moat.length ? v.moat.map(m => `<h4>${esc(m.cat)} <span class="tag">${m.n}문장</span></h4>${m.text.map((t, i) => quote(t, m.ko && m.ko[i])).join('')}`).join('') : '<p class="hint">사업 설명에서 경쟁우위 근거 문장이 거의 잡히지 않았습니다.</p>';
-  const newr = (v.risk_new || []).length ? (v.risk_new.map((t, i) => quote(t, v.risk_new_ko && v.risk_new_ko[i])).join('')) : '<p class="hint">없음</p>';
-  const cap = [['자사주', v.bb], ['배당', v.div], ['차입·유동성', v.liq]].filter(x => x[1] && x[1].length).map(x => `<h4>${x[0]}</h4>${x[1].map(t => quote(t)).join('')}`).join('');
+  const flags = real.length ? real.map(f => `<h4>${esc(f.name)} <span class="tag">${esc(f.kind)}</span></h4>${quote(f.text, f.ko, r.market === 'US')}`).join('') : '<p class="hint">사실형 주의신호가 잡히지 않았습니다.</p>';
+  const hy = hypo.length ? `<details><summary>가정·일반 언급만 걸린 항목 (${hypo.length})</summary>${hypo.map(f => `<h4>${esc(f.name)}</h4>${quote(f.text, f.ko, r.market === 'US')}`).join('')}</details>` : '';
+  const moat = v.moat.length ? v.moat.map(m => `<h4>${esc(m.cat)} <span class="tag">${m.n}문장</span></h4>${m.text.map((t, i) => quote(t, m.ko && m.ko[i], r.market === 'US')).join('')}`).join('') : '<p class="hint">사업 설명에서 경쟁우위 근거 문장이 거의 잡히지 않았습니다.</p>';
+  const newr = (v.risk_new || []).length ? (v.risk_new.map((t, i) => quote(t, v.risk_new_ko && v.risk_new_ko[i], r.market === 'US')).join('')) : '<p class="hint">없음</p>';
+  const cap = [['자사주', v.bb, v.bb_ko], ['배당', v.div, v.div_ko], ['차입·유동성', v.liq, v.liq_ko]].filter(x => x[1] && x[1].length).map(x => `<h4>${x[0]}</h4>${x[1].map((t, i) => quote(t, x[2] && x[2][i], r.market === 'US')).join('')}`).join('');
+  const miss = r.market === 'US' && ((r.tr && r.tr.fail) || (r.tr && !r.tr.asked));
+  const trBox = miss ? `<div class="warn" id="trbox">${r.tr.asked ? '서버가 일부 문장을 번역하지 못했습니다' + (r.tr.err ? ' (' + esc(r.tr.err) + ')' : '') : '번역을 끄고 점검했습니다'}.
+    <button class="btn ghost sm" id="trb" style="margin-top:8px">이 폰에서 번역 시도</button><div id="trm" class="hint" style="margin-top:6px">또는 문장 옆 [번역 ↗]을 누르면 구글 번역이 열립니다.</div></div>` : '';
   const a = r.analysis;
   const top = a ? `<div class="gr" style="margin-top:10px"><div class="mini"><small>점수 · 등급</small><b>${a.score.toFixed(2)} · ${esc(a.tier)}</b></div><div class="mini"><small>괴리율</small><b>${spct(a.gap)}</b></div></div>` : '';
   return `<div class="card"><div class="head"><div><div class="nm">${esc(r.name)}</div><div class="tk">${esc(r.report)} · 제출 ${esc(r.filed || '')}</div></div><span class="pill ${real.length ? 'p-warn' : 'p-good'}">신호 ${real.length}</span></div>${top}
-  <p style="margin:10px 0 0"><a href="${esc(r.url)}" target="_blank" rel="noopener">원문 공시 열기 ↗</a></p></div>
+  <p style="margin:10px 0 0"><a href="${esc(r.url)}" target="_blank" rel="noopener">원문 공시 열기 ↗</a></p>${trBox}${r.market === 'US' ? '<div class="hint" id="trp" style="margin-top:8px"></div>' : ''}</div>
   <div class="card"><h3>주의신호 원문</h3>${flags}${hy}</div>
   <div class="card"><h3>직접 확인할 질문 <span class="tag">체크하면 이 폰에 저장</span></h3><div id="rq">${r.questions.map((q, i) => `<label class="ck"><input type="checkbox" data-i="${i}"><span>${esc(q)}</span></label>`).join('')}</div></div>
   <div class="card"><h3>사업 속 경쟁우위 근거</h3><p class="hint">${esc(v.scope || '')} · 회사 스스로의 주장입니다. 점유율 수치·계약 기간 같은 구체성을 직접 확인하세요.</p>${moat}</div>
@@ -360,7 +374,30 @@ function bindAnalysisExtras(r) {
   g1.oninput = run; sh.oninput = run;
   $('#wrs').onclick = () => { g1.value = g0; sh.value = 0; lab(); show({ fair: r.fair, buy: r.buy, gap: r.gap, irr: r.irr }); $('#wmsg').innerHTML = ''; };
 }
+async function autoTr(r) {
+  const els = [...document.querySelectorAll('.quote[data-en]')]; const p = $('#trp');
+  if (!els.length) { if (p) p.textContent = ''; return; }
+  let ok = 0, bad = 0;
+  for (let i = 0; i < els.length; i++) {
+    const el = els[i]; if (!el.isConnected) return;
+    if (p) p.textContent = `이 폰에서 번역 중… ${i + 1}/${els.length}`;
+    try { const ko = await trBrowser(el.dataset.en); TRC.set(el.dataset.en, ko); const k = el.querySelector('.ko'); k.textContent = ko; k.classList.remove('tr'); el.removeAttribute('data-en'); ok++; }
+    catch (e) { bad++; if (bad >= 2 && !ok) break; }
+  }
+  if (p) p.textContent = ok ? (bad ? `${ok}개 번역, ${bad}개는 실패(문장 옆 [번역 ↗] 사용)` : '번역을 마쳤습니다.') : '이 폰에서도 번역 서버에 접속하지 못했습니다. 문장 옆 [번역 ↗]을 누르거나 크롬의 "한국어로 번역"을 쓰세요.';
+}
 function bindReviewExtras(r) {
+  if (r.market === 'US') autoTr(r);
+  const tb = $('#trb');
+  if (tb) tb.onclick = async () => {
+    const els = [...document.querySelectorAll('.quote[data-en]')]; let ok = 0, bad = 0; tb.disabled = true;
+    for (const el of els) {
+      if (bad >= 2 && !ok) break;
+      try { const ko = await trBrowser(el.dataset.en); el.querySelector('.ko').textContent = ko; el.querySelector('.ko').classList.remove('tr'); el.removeAttribute('data-en'); ok++; } catch (e) { bad++; }
+    }
+    $('#trm').textContent = ok ? `${ok}개 문장을 번역했습니다.` + (bad ? ` ${bad}개는 실패 — [번역 ↗]을 누르세요.` : '') : '이 폰에서도 번역 서버에 접속하지 못했습니다. 문장 옆 [번역 ↗]을 누르거나, 크롬의 "한국어로 번역" 기능을 쓰세요.';
+    tb.disabled = false;
+  };
   const t = nkey(state.review.tk || ''); const n = getN(t), rq = n.rq || {};
   document.querySelectorAll('#rq input').forEach(c => {
     const q = r.questions[+c.dataset.i]; c.checked = !!rq[q];
