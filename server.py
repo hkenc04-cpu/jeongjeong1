@@ -300,6 +300,58 @@ def compare(groups, log):
     return {'rows': rows, 'medians': meds}
 
 
+
+# ---------- 번역(서버) : 무료 엔드포인트 두 곳을 차례로 시도, 실패 이유를 기록 ----------
+TS = {'ok': 0, 'fail': 0, 'streak': 0, 'err': ''}
+
+
+def _http_text(url, timeout=8):
+    import urllib.request
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode('utf-8')
+
+
+def tr_ko(text):
+    """영어 -> 한국어. 성공하면 번역문, 실패하면 None(화면에서 [번역 ↗] 링크로 대체)."""
+    import urllib.parse
+    if not text:
+        return text
+    c = E._TR.get('cache')
+    if c is not None and text in c:
+        return c[text]
+    if TS['streak'] >= 3:                      # 연속 실패면 이번 점검에서는 더 시도하지 않음
+        TS['fail'] += 1
+        return None
+    out, errs = None, []
+    q = urllib.parse.quote(text[:1500])
+    try:
+        data = json.loads(_http_text('https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=' + q))
+        out = ''.join(seg[0] for seg in data[0] if seg and seg[0]) or None
+        if not out:
+            errs.append('구글 번역: 빈 응답')
+    except Exception as e:  # noqa: BLE001
+        errs.append('구글 번역: ' + type(e).__name__ + ' ' + str(e)[:80])
+    if not out:
+        try:
+            qm = urllib.parse.quote(text[:480])
+            data = json.loads(_http_text('https://api.mymemory.translated.net/get?langpair=en|ko&q=' + qm))
+            t = (data.get('responseData') or {}).get('translatedText')
+            if str(data.get('responseStatus')) == '200' and t and 'MYMEMORY WARNING' not in t.upper():
+                out = t
+            else:
+                errs.append('MyMemory: ' + str(data.get('responseDetails') or data.get('responseStatus'))[:80])
+        except Exception as e:  # noqa: BLE001
+            errs.append('MyMemory: ' + type(e).__name__ + ' ' + str(e)[:80])
+    if out:
+        TS['ok'] += 1; TS['streak'] = 0
+        if c is not None:
+            c[text] = out
+        return out
+    TS['fail'] += 1; TS['streak'] += 1; TS['err'] = ' / '.join(errs)
+    return None
+
+
 # ---------- 사업보고서 점검 ----------
 def review(tk, translate, log):
     mk, code = classify(tk)
@@ -345,21 +397,23 @@ def review(tk, translate, log):
     cur = E.get_10k_text(cik, fl[0][1], fl[0][2], ua, SEC_CACHE)
     prev = E.get_10k_text(cik, fl[1][1], fl[1][2], ua, SEC_CACHE) if len(fl) > 1 else ''
     rv = E.review_10k(cur, prev, int(fl[0][3][:4]))
+    TS.update(ok=0, fail=0, streak=0, err='')
     if translate:
         log('한글 번역 중')
         E._tr_open(DATA)
         for nm, (kind, ev) in list(rv['flags'].items()):
-            rv['flags'][nm] = (kind, ev, E.ko(ev))
+            rv['flags'][nm] = (kind, ev, tr_ko(ev))
         for cat, (n, ss) in list(rv['moat'].items()):
-            rv['moat'][cat] = (n, ss, [E.ko(x) for x in ss])
-        rv['risk_new_ko'] = [E.ko(x) for x in rv['risk_new'][:4]]
+            rv['moat'][cat] = (n, ss, [tr_ko(x) for x in ss])
+        rv['risk_new_ko'] = [tr_ko(x) for x in rv['risk_new'][:4]]
         E._tr_save()
     cc = dict(c or {})
     cc.setdefault('gap', 0); cc.setdefault('gap_avg', None); cc.setdefault('mult', None)
     qs = E.make_questions(cc, rv)
     return {'market': 'US', 'name': title, 'report': '10-K', 'filed': fl[0][3],
             'url': f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{fl[0][1].replace('-', '')}/{fl[0][2]}",
-            'rv': us_pack(rv, translate), 'questions': qs, 'analysis': ana}
+            'rv': us_pack(rv, translate), 'questions': qs, 'analysis': ana,
+            'tr': {'asked': bool(translate), 'ok': TS['ok'], 'fail': TS['fail'], 'err': TS['err']}}
 
 
 def us_pack(rv, tr):
@@ -552,7 +606,7 @@ def api_settings_set():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True, version='v47-app3.3', password_set=bool(os.environ.get('APP_PASSWORD')))
+    return jsonify(ok=True, version='v47-app3.4', password_set=bool(os.environ.get('APP_PASSWORD')))
 
 
 @app.get('/')
