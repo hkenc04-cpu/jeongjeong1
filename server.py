@@ -406,6 +406,8 @@ def review(tk, translate, log):
         for cat, (n, ss) in list(rv['moat'].items()):
             rv['moat'][cat] = (n, ss, [tr_ko(x) for x in ss])
         rv['risk_new_ko'] = [tr_ko(x) for x in rv['risk_new'][:4]]
+        for k in ('bb', 'div', 'liq'):
+            rv[k + '_ko'] = [tr_ko(x) for x in rv[k][:3]]
         E._tr_save()
     cc = dict(c or {})
     cc.setdefault('gap', 0); cc.setdefault('gap_avg', None); cc.setdefault('mult', None)
@@ -425,7 +427,8 @@ def us_pack(rv, tr):
         if v[0]:
             moat.append({'cat': cat, 'n': v[0], 'text': v[1], 'ko': v[2] if len(v) > 2 else None})
     return {'flags': flags, 'moat': moat, 'risk_n': rv['risk_n'], 'risk_new_n': rv['risk_new_n'], 'risk_new': rv['risk_new'][:4],
-            'risk_new_ko': rv.get('risk_new_ko'), 'biz': rv['biz'], 'bb': rv['bb'], 'div': rv['div'], 'liq': rv['liq'], 'scope': rv.get('moat_scope')}
+            'risk_new_ko': rv.get('risk_new_ko'), 'biz': rv['biz'], 'bb': rv['bb'][:3], 'div': rv['div'][:3], 'liq': rv['liq'][:3],
+            'bb_ko': rv.get('bb_ko'), 'div_ko': rv.get('div_ko'), 'liq_ko': rv.get('liq_ko'), 'scope': rv.get('moat_scope')}
 
 
 def kr_pack(rv):
@@ -606,7 +609,7 @@ def api_settings_set():
 
 @app.get('/api/health')
 def health():
-    return jsonify(ok=True, version='v47-app3.4', password_set=bool(os.environ.get('APP_PASSWORD')))
+    return jsonify(ok=True, version='v47-app3.6', password_set=bool(os.environ.get('APP_PASSWORD')))
 
 
 @app.get('/')
